@@ -27,8 +27,7 @@
     padding: 32px 16px;
   }
   main { width: 100%; max-width: 520px; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
 
   .tabs {
     display: flex; gap: 8px; margin-bottom: 16px;
@@ -87,17 +86,11 @@
     font-size: 13px; color: var(--muted); flex-wrap: wrap;
   }
   .result .detail b { display: block; color: var(--text); font-size: 15px; }
-
-  footer {
-    margin-top: 16px; font-size: 12px; color: var(--muted);
-    text-align: center; line-height: 1.7;
-  }
 </style>
 </head>
 <body>
 <main>
   <h1>イベントドロップ計算機</h1>
-  <p class="sub">抽選はサクチケありなら20秒に1回、なしなら40秒に1回。厳密計算なので結果は一瞬で出ます。</p>
 
   <div class="tabs">
     <button id="tabPercent" class="active">必要確率を求める</button>
@@ -130,7 +123,7 @@
     <div class="row">
       <div class="field">
         <label>ユーザー数<span class="hint">アクティブなユーザー数を想定</span></label>
-        <input type="number" id="inUsers" value="1000" min="1" step="1">
+        <input type="number" id="inUsers" value="1" min="1" step="1">
       </div>
       <div class="field">
         <label>1人の上限<span class="hint">個</span></label>
@@ -140,15 +133,11 @@
 
     <div class="field">
       <label>目標ドロップ総数<span class="hint">全体で配りたい個数</span></label>
-      <input type="number" id="inTarget" value="2000" min="1" step="1">
+      <input type="number" id="inTarget" value="1" min="1" step="1">
     </div>
   </div>
 
   <div class="result" id="result"></div>
-
-  <footer>
-    計算はすべてこのページ内(端末内)で完結します。サーバー送信なし・オフラインでも動作。
-  </footer>
 </main>
 
 <script>
