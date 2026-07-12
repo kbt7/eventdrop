@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>イベントドロップ計算機</title>
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --text: #1a2233;
+    --muted: #6b7688;
+    --accent: #3b6ef6;
+    --accent-soft: #e8eefe;
+    --border: #e2e7f0;
+    --ok: #1a9e55;
+    --warn: #d9534f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  main { width: 100%; max-width: 520px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+
+  .tabs {
+    display: flex; gap: 8px; margin-bottom: 16px;
+  }
+  .tabs button {
+    flex: 1; padding: 10px; border: 1px solid var(--border);
+    background: var(--card); color: var(--muted);
+    border-radius: 10px; font-size: 14px; cursor: pointer;
+  }
+  .tabs button.active {
+    background: var(--accent); border-color: var(--accent);
+    color: #fff; font-weight: 600;
+  }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px;
+  }
+  .field { margin-bottom: 14px; }
+  .field label {
+    display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px;
+  }
+  .field .hint { font-weight: 400; color: var(--muted); margin-left: 6px; }
+  .field input {
+    width: 100%; padding: 10px 12px; font-size: 15px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: #fbfcfe; color: var(--text);
+  }
+  .field input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+  .duration { display: flex; gap: 8px; align-items: center; }
+  .duration input { text-align: right; }
+  .duration span { color: var(--muted); font-size: 13px; white-space: nowrap; }
+
+  .result {
+    margin-top: 16px; background: var(--card);
+    border: 1px solid var(--border); border-radius: 14px;
+    padding: 20px; text-align: center;
+  }
+  .result .label { font-size: 13px; color: var(--muted); }
+  .result .big {
+    font-size: 32px; font-weight: 700; color: var(--accent);
+    margin: 6px 0 2px; word-break: break-all;
+  }
+  .result .odds { font-size: 14px; color: var(--muted); }
+  .result .error { color: var(--warn); font-size: 15px; font-weight: 600; }
+  .result .detail {
+    display: flex; justify-content: center; gap: 24px;
+    margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+    font-size: 13px; color: var(--muted); flex-wrap: wrap;
+  }
+  .result .detail b { display: block; color: var(--text); font-size: 15px; }
+
+  footer {
+    margin-top: 16px; font-size: 12px; color: var(--muted);
+    text-align: center; line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>イベントドロップ計算機</h1>
+  <p class="sub">抽選は20秒に1回(180回/時)。厳密計算なので結果は一瞬で出ます。</p>
+
+  <div class="tabs">
+    <button id="tabPercent" class="active">必要確率を求める</button>
+    <button id="tabTime">所要時間を推定</button>
+  </div>
+
+  <div class="card">
+    <div class="field" id="groupDuration">
+      <label>イベントの長さ</label>
+      <div class="duration">
+        <input type="number" id="inH" value="24" min="0" step="1"><span>時間</span>
+        <input type="number" id="inM" value="0" min="0" step="1"><span>分</span>
+        <input type="number" id="inS" value="0" min="0" step="1"><span>秒</span>
+      </div>
+    </div>
+
+    <div class="field" id="groupPercent" style="display:none">
+      <label>当選確率<span class="hint">1回の抽選で当たる % (例: 0.05)</span></label>
+      <input type="number" id="inPercent" value="0.05" min="0" max="100" step="any">
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label>ユーザー数<span class="hint">人</span></label>
+        <input type="number" id="inUsers" value="1000" min="1" step="1">
+      </div>
+      <div class="field">
+        <label>1人の上限<span class="hint">個</span></label>
+        <input type="number" id="inLimit" value="5" min="1" step="1">
+      </div>
+    </div>
+
+    <div class="field">
+      <label>目標ドロップ総数<span class="hint">全体で配りたい個数</span></label>
+      <input type="number" id="inTarget" value="2000" min="1" step="1">
+    </div>
+  </div>
+
+  <div class="result" id="result"></div>
+
+  <footer>
+    計算はすべてこのページ内(端末内)で完結します。サーバー送信なし・オフラインでも動作。
+  </footer>
+</main>
+
+<script>
+"use strict";
+
+const TRIAL_SEC = 20;                                   // 抽選間隔(秒)
+const MAX_TRIALS = Math.floor(100 * 365 * 24 * 3600 / TRIAL_SEC); // 100年分
+
+// E[min(L, Binomial(n, p))] を厳密に計算 (log空間の漸化式で桁あふれなし)
+function expectedMin(n, p, L) {
+  if (n <= 0 || p <= 0 || L <= 0) return 0;
+  if (p >= 1) return Math.min(L, n);
+
+  const logp = Math.log(p);
+  const logq = Math.log1p(-p);
+
+  let logP = n * logq;          // log P(X=0)
+  let F = Math.exp(logP);       // Σ P(X=k), k<L
+  let S = 0;                    // Σ k·P(X=k), k<L
+
+  const kMax = Math.min(L - 1, n);
+  for (let k = 0; k < kMax; k++) {
+    logP += Math.log((n - k) / (k + 1)) + logp - logq;
+    const P = Math.exp(logP);
+    S += (k + 1) * P;
+    F += P;
+  }
+  if (F > 1) F = 1;
+  return S + L * (1 - F);
+}
+
+// 目標平均に必要な当選確率 (0〜1) を二分法で求める
+function findPercent(users, trials, L, target) {
+  if (trials <= 0) return { error: "イベントの長さを入れてください" };
+  const maxAvg = users * Math.min(L, trials);
+  if (target > maxAvg) {
+    return { error: `目標が理論上限 (${maxAvg.toLocaleString("ja-JP")}個) を超えています` };
+  }
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 100; i++) {
+    const mid = (lo + hi) / 2;
+    if (users * expectedMin(trials, mid, L) < target) lo = mid; else hi = mid;
+  }
+  return { p: (lo + hi) / 2 };
+}
+
+// 目標平均に届く最小の抽選回数を求める
+function findTrials(users, p, L, target) {
+  if (p <= 0) return { error: "確率を入れてください" };
+  if (target > users * L) {
+    return { error: `目標が理論上限 (${(users * L).toLocaleString("ja-JP")}個) を超えています` };
+  }
+  if (users * expectedMin(MAX_TRIALS, p, L) < target) {
+    return { error: "その確率では100年以内に目標へ届きません(確率を上げてください)" };
+  }
+  let lo = 0, hi = 180;
+  while (users * expectedMin(hi, p, L) < target) { lo = hi; hi = Math.min(hi * 2, MAX_TRIALS); }
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (users * expectedMin(mid, p, L) < target) lo = mid; else hi = mid;
+  }
+  return { trials: hi };
+}
+
+// ---- 表示 -----------------------------------------------------------------
+
+function fmtDuration(sec) {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  let out = "";
+  if (d > 0) out += d + "日";
+  if (h > 0) out += h + "時間";
+  if (m > 0) out += m + "分";
+  if (s > 0 || out === "") out += s + "秒";
+  return out;
+}
+
+function fmtPercent(p) {
+  const pct = p * 100;
+  return pct >= 1 ? pct.toFixed(4) : pct.toPrecision(5);
+}
+
+const $ = (id) => document.getElementById(id);
+let mode = "percent";
+
+function readCommon() {
+  return {
+    users: Math.floor(+$("inUsers").value),
+    limit: Math.floor(+$("inLimit").value),
+    target: +$("inTarget").value,
+  };
+}
+
+function render() {
+  const { users, limit, target } = readCommon();
+  const box = $("result");
+
+  if (!(users >= 1) || !(limit >= 1) || !(target >= 1)) {
+    box.innerHTML = '<div class="label">条件を入力してください</div>';
+    return;
+  }
+
+  if (mode === "percent") {
+    const sec = (+$("inH").value || 0) * 3600 + (+$("inM").value || 0) * 60 + (+$("inS").value || 0);
+    const trials = Math.round(sec / TRIAL_SEC);
+    const r = findPercent(users, trials, limit, target);
+
+    if (r.error) {
+      box.innerHTML = `<div class="error">⚠️ ${r.error}</div>`;
+      return;
+    }
+    const odds = Math.round(1 / r.p);
+    box.innerHTML = `
+      <div class="label">必要な当選確率(20秒ごとの抽選)</div>
+      <div class="big">${fmtPercent(r.p)}%</div>
+      <div class="odds">約 1 / ${odds.toLocaleString("ja-JP")}</div>
+      <div class="detail">
+        <div>イベント時間<b>${fmtDuration(trials * TRIAL_SEC)}</b></div>
+        <div>抽選回数/人<b>${trials.toLocaleString("ja-JP")}回</b></div>
+        <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
+      </div>`;
+  } else {
+    const p = (+$("inPercent").value || 0) / 100;
+    const r = findTrials(users, p, limit, target);
+
+    if (r.error) {
+      box.innerHTML = `<div class="error">⚠️ ${r.error}</div>`;
+      return;
+    }
+    const sec = r.trials * TRIAL_SEC;
+    box.innerHTML = `
+      <div class="label">目標到達までの推定時間</div>
+      <div class="big">${fmtDuration(sec)}</div>
+      <div class="odds">抽選 ${r.trials.toLocaleString("ja-JP")}回/人(20秒ごと)</div>
+      <div class="detail">
+        <div>当選確率<b>${fmtPercent(p)}%</b></div>
+        <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
+        <div>理論上限<b>${(users * limit).toLocaleString("ja-JP")}個</b></div>
+      </div>`;
+  }
+}
+
+function setMode(m) {
+  mode = m;
+  $("tabPercent").classList.toggle("active", m === "percent");
+  $("tabTime").classList.toggle("active", m === "time");
+  $("groupDuration").style.display = m === "percent" ? "" : "none";
+  $("groupPercent").style.display = m === "time" ? "" : "none";
+  render();
+}
+
+$("tabPercent").addEventListener("click", () => setMode("percent"));
+$("tabTime").addEventListener("click", () => setMode("time"));
+document.querySelectorAll("input").forEach((el) => el.addEventListener("input", render));
+
+render();
+</script>
+</body>
+</html>
