@@ -63,6 +63,11 @@
   .duration { display: flex; gap: 8px; align-items: center; }
   .duration input { text-align: right; }
   .duration span { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .check {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 
   .result {
     margin-top: 16px; background: var(--card);
@@ -92,7 +97,7 @@
 <body>
 <main>
   <h1>イベントドロップ計算機</h1>
-  <p class="sub">抽選は20秒に1回(180回/時)。厳密計算なので結果は一瞬で出ます。</p>
+  <p class="sub">抽選はサクチケありなら20秒に1回、なしなら40秒に1回。厳密計算なので結果は一瞬で出ます。</p>
 
   <div class="tabs">
     <button id="tabPercent" class="active">必要確率を求める</button>
@@ -100,6 +105,14 @@
   </div>
 
   <div class="card">
+    <div class="field">
+      <label class="check">
+        <input type="checkbox" id="inSakuTicket" checked>
+        サクチケあり
+        <span class="hint">ありは20秒ごと、なしは40秒ごとに抽選</span>
+      </label>
+    </div>
+
     <div class="field" id="groupDuration">
       <label>イベントの長さ</label>
       <div class="duration">
@@ -116,7 +129,7 @@
 
     <div class="row">
       <div class="field">
-        <label>ユーザー数<span class="hint">人</span></label>
+        <label>ユーザー数<span class="hint">アクティブなユーザー数を想定</span></label>
         <input type="number" id="inUsers" value="1000" min="1" step="1">
       </div>
       <div class="field">
@@ -141,8 +154,9 @@
 <script>
 "use strict";
 
-const TRIAL_SEC = 20;                                   // 抽選間隔(秒)
-const MAX_TRIALS = Math.floor(100 * 365 * 24 * 3600 / TRIAL_SEC); // 100年分
+// 抽選間隔(秒): サクチケありは20秒、なしは40秒
+const trialSec = () => ($("inSakuTicket").checked ? 20 : 40);
+const maxTrials = (ts) => Math.floor(100 * 365 * 24 * 3600 / ts); // 100年分
 
 // E[min(L, Binomial(n, p))] を厳密に計算 (log空間の漸化式で桁あふれなし)
 function expectedMin(n, p, L) {
@@ -183,7 +197,8 @@ function findPercent(users, trials, L, target) {
 }
 
 // 目標平均に届く最小の抽選回数を求める
-function findTrials(users, p, L, target) {
+function findTrials(users, p, L, target, ts) {
+  const MAX_TRIALS = maxTrials(ts);
   if (p <= 0) return { error: "確率を入れてください" };
   if (target > users * L) {
     return { error: `目標が理論上限 (${(users * L).toLocaleString("ja-JP")}個) を超えています` };
@@ -240,9 +255,11 @@ function render() {
     return;
   }
 
+  const ts = trialSec();
+
   if (mode === "percent") {
     const sec = (+$("inH").value || 0) * 3600 + (+$("inM").value || 0) * 60 + (+$("inS").value || 0);
-    const trials = Math.round(sec / TRIAL_SEC);
+    const trials = Math.round(sec / ts);
     const r = findPercent(users, trials, limit, target);
 
     if (r.error) {
@@ -251,27 +268,27 @@ function render() {
     }
     const odds = Math.round(1 / r.p);
     box.innerHTML = `
-      <div class="label">必要な当選確率(20秒ごとの抽選)</div>
+      <div class="label">必要な当選確率(${ts}秒ごとの抽選)</div>
       <div class="big">${fmtPercent(r.p)}%</div>
       <div class="odds">約 1 / ${odds.toLocaleString("ja-JP")}</div>
       <div class="detail">
-        <div>イベント時間<b>${fmtDuration(trials * TRIAL_SEC)}</b></div>
+        <div>イベント時間<b>${fmtDuration(trials * ts)}</b></div>
         <div>抽選回数/人<b>${trials.toLocaleString("ja-JP")}回</b></div>
         <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
       </div>`;
   } else {
     const p = (+$("inPercent").value || 0) / 100;
-    const r = findTrials(users, p, limit, target);
+    const r = findTrials(users, p, limit, target, ts);
 
     if (r.error) {
       box.innerHTML = `<div class="error">⚠️ ${r.error}</div>`;
       return;
     }
-    const sec = r.trials * TRIAL_SEC;
+    const sec = r.trials * ts;
     box.innerHTML = `
       <div class="label">目標到達までの推定時間</div>
       <div class="big">${fmtDuration(sec)}</div>
-      <div class="odds">抽選 ${r.trials.toLocaleString("ja-JP")}回/人(20秒ごと)</div>
+      <div class="odds">抽選 ${r.trials.toLocaleString("ja-JP")}回/人(${ts}秒ごと)</div>
       <div class="detail">
         <div>当選確率<b>${fmtPercent(p)}%</b></div>
         <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
