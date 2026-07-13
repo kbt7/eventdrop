@@ -58,7 +58,9 @@
   }
   .field input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
   .row { display: flex; gap: 10px; }
-  .row .field { flex: 1; }
+  .row .field { flex: 1; display: flex; flex-direction: column; }
+  .row .field label { flex: 1; }
+  .row .field input { margin-top: auto; }
   .duration { display: flex; gap: 8px; align-items: center; }
   .duration input { text-align: right; }
   .duration span { color: var(--muted); font-size: 13px; white-space: nowrap; }
@@ -123,7 +125,7 @@
 
     <div class="row">
       <div class="field">
-        <label>ユーザー数<span class="hint">アクティブなユーザー数を想定</span></label>
+        <label>ユーザー数<span class="hint">参加者のうち常にプレイし続けている人数。参加人数より少なめになる</span></label>
         <input type="number" id="inUsers" value="1" min="1" step="1">
       </div>
       <div class="field">
