@@ -248,43 +248,25 @@ function expectedDelivered(users, n, p, L, M) {
   return mu * Phi - sigma * phi + M * (1 - Phi);
 }
 
-// 平均配布数が目標に届く当選確率 (0〜1) を二分法で求める
-function findPercent(users, trials, L, target, M) {
+// 当たり回数の期待値(上限・在庫で切られる前)が目標になる当選確率
+// 期待値 = ユーザー数 × 抽選回数 × p なので直接計算できる
+function findPercent(users, trials, target) {
   if (trials <= 0) return { error: "イベントの長さを入れてください" };
-  const maxE = Math.min(M, users * Math.min(L, trials));
-  if (target > maxE) {
-    return { error: `目標が理論上限 (${maxE.toLocaleString("ja-JP")}個) を超えています` };
+  const p = target / (users * trials);
+  if (p > 1) {
+    return { error: "確率100%でも期待値が目標に届きません(時間を延ばすかユーザー数を増やしてください)" };
   }
-  if (target === maxE) return { p: 1 };  // 平均で上限ちょうど = 毎回必ず当てるしかない
-  let lo = 0, hi = 1;
-  for (let i = 0; i < 60; i++) {
-    const mid = (lo + hi) / 2;
-    if (expectedDelivered(users, trials, mid, L, M) < target) lo = mid; else hi = mid;
-  }
-  return { p: hi };
+  return { p };
 }
 
-// 平均配布数が目標に届く最小の抽選回数を求める
-function findTrials(users, p, L, target, ts, M) {
-  const MAX_TRIALS = maxTrials(ts);
+// 当たり回数の期待値が目標に届く最小の抽選回数
+function findTrials(users, p, target, ts) {
   if (p <= 0) return { error: "確率を入れてください" };
-  const maxLim = Math.min(M, users * L);
-  if (target > maxLim) {
-    return { error: `目標が理論上限 (${maxLim.toLocaleString("ja-JP")}個) を超えています` };
+  const trials = Math.ceil(target / (users * Math.min(p, 1)));
+  if (trials > maxTrials(ts)) {
+    return { error: "その確率では100年以内に期待値が目標へ届きません(確率を上げてください)" };
   }
-  if (target === maxLim) {
-    return { error: "平均で上限ちょうどを狙えるのは確率100%のときだけです(目標を下げるか、最大ドロップ数・1人上限を増やしてください)" };
-  }
-  if (expectedDelivered(users, MAX_TRIALS, p, L, M) < target) {
-    return { error: "その確率では100年以内に目標へ届きません(確率を上げてください)" };
-  }
-  let lo = 0, hi = 180;
-  while (expectedDelivered(users, hi, p, L, M) < target) { lo = hi; hi = Math.min(hi * 2, MAX_TRIALS); }
-  while (hi - lo > 1) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (expectedDelivered(users, mid, p, L, M) < target) lo = mid; else hi = mid;
-  }
-  return { trials: hi };
+  return { trials };
 }
 
 // ---- 表示 -----------------------------------------------------------------
@@ -345,7 +327,7 @@ function render() {
   if (mode === "percent") {
     const sec = (+$("inH").value || 0) * 3600 + (+$("inM").value || 0) * 60 + (+$("inS").value || 0);
     const trials = Math.round(sec / ts);
-    const r = findPercent(users, trials, limit, target, maxDrop);
+    const r = findPercent(users, trials, target);
 
     if (r.error) {
       box.innerHTML = `<div class="error">⚠️ ${r.error}</div>`;
@@ -353,20 +335,21 @@ function render() {
     }
     const odds = Math.round(1 / r.p);
     const soldOut = tailProb(users, trials, r.p, limit, Math.ceil(maxDrop));
+    const delivered = expectedDelivered(users, trials, r.p, limit, Math.ceil(maxDrop));
     box.innerHTML = `
       <div class="label">必要な当選確率(${ts}秒ごとの抽選)</div>
       <div class="big">${fmtPercent(r.p)}%</div>
       <div class="odds">約 1 / ${odds.toLocaleString("ja-JP")}</div>
-      <div class="note">この確率にすると、期間内の配布数が平均で目標に届きます(回ごとのブレあり)</div>
+      <div class="note">期間内の当たり回数が平均でちょうど目標個数になる確率です</div>
       <div class="detail">
         <div>イベント時間<b>${fmtDuration(trials * ts)}</b></div>
         <div>抽選回数/人<b>${trials.toLocaleString("ja-JP")}回</b></div>
-        <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
+        <div>平均配布数<b>${delivered.toFixed(2)}個</b></div>
         <div>在庫が尽きる確率<b>${fmtChance(soldOut)}</b></div>
       </div>`;
   } else {
     const p = (+$("inPercent").value || 0) / 100;
-    const r = findTrials(users, p, limit, target, ts, maxDrop);
+    const r = findTrials(users, p, target, ts);
 
     if (r.error) {
       box.innerHTML = `<div class="error">⚠️ ${r.error}</div>`;
@@ -374,14 +357,15 @@ function render() {
     }
     const sec = r.trials * ts;
     const soldOut = tailProb(users, r.trials, p, limit, Math.ceil(maxDrop));
+    const delivered = expectedDelivered(users, r.trials, p, limit, Math.ceil(maxDrop));
     box.innerHTML = `
       <div class="label">目標到達までの推定時間</div>
       <div class="big">${fmtDuration(sec)}</div>
       <div class="odds">抽選 ${r.trials.toLocaleString("ja-JP")}回/人(${ts}秒ごと)</div>
-      <div class="note">この時間で、配布数が平均で目標に届きます(回ごとのブレあり)</div>
+      <div class="note">この時間で、当たり回数の平均が目標個数に届きます</div>
       <div class="detail">
         <div>当選確率<b>${fmtPercent(p)}%</b></div>
-        <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
+        <div>平均配布数<b>${delivered.toFixed(2)}個</b></div>
         <div>理論上限<b>${Math.min(maxDrop, users * limit).toLocaleString("ja-JP")}個</b></div>
         <div>在庫が尽きる確率<b>${fmtChance(soldOut)}</b></div>
       </div>`;
