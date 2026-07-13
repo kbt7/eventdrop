@@ -132,9 +132,15 @@
       </div>
     </div>
 
-    <div class="field">
-      <label>目標ドロップ総数<span class="hint">全体で配りたい個数</span></label>
-      <input type="number" id="inTarget" value="1" min="1" step="1">
+    <div class="row">
+      <div class="field">
+        <label>目標ドロップ総数<span class="hint">全体で配りたい個数</span></label>
+        <input type="number" id="inTarget" value="1" min="1" step="1">
+      </div>
+      <div class="field">
+        <label>最大ドロップ総数<span class="hint">イベント全体で出る上限</span></label>
+        <input type="number" id="inMax" value="1" min="1" step="1">
+      </div>
     </div>
   </div>
 
@@ -271,15 +277,21 @@ function readCommon() {
     users: Math.floor(+$("inUsers").value),
     limit: Math.floor(+$("inLimit").value),
     target: +$("inTarget").value,
+    maxDrop: Math.floor(+$("inMax").value),
   };
 }
 
 function render() {
-  const { users, limit, target } = readCommon();
+  const { users, limit, target, maxDrop } = readCommon();
   const box = $("result");
 
-  if (!(users >= 1) || !(limit >= 1) || !(target >= 1)) {
+  if (!(users >= 1) || !(limit >= 1) || !(target >= 1) || !(maxDrop >= 1)) {
     box.innerHTML = '<div class="label">条件を入力してください</div>';
+    return;
+  }
+
+  if (target > maxDrop) {
+    box.innerHTML = '<div class="error">⚠️ 目標ドロップ総数が最大ドロップ総数を超えています</div>';
     return;
   }
 
@@ -322,7 +334,7 @@ function render() {
       <div class="detail">
         <div>当選確率<b>${fmtPercent(p)}%</b></div>
         <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
-        <div>理論上限<b>${(users * limit).toLocaleString("ja-JP")}個</b></div>
+        <div>理論上限<b>${Math.min(maxDrop, users * limit).toLocaleString("ja-JP")}個</b></div>
       </div>`;
   }
 }
