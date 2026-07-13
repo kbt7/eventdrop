@@ -269,6 +269,13 @@ function fmtPercent(p) {
   return pct >= 1 ? pct.toFixed(4) : pct.toPrecision(5);
 }
 
+// 確率を人向けに整形 (在庫切れ確率など)
+function fmtChance(x) {
+  if (x >= 0.999) return "99.9%以上";
+  if (x < 0.001) return "0.1%未満";
+  return (x * 100).toFixed(1) + "%";
+}
+
 const $ = (id) => document.getElementById(id);
 let mode = "percent";
 
@@ -307,6 +314,7 @@ function render() {
       return;
     }
     const odds = Math.round(1 / r.p);
+    const soldOut = tailProb(users, trials, r.p, limit, Math.ceil(maxDrop));
     box.innerHTML = `
       <div class="label">必要な当選確率(${ts}秒ごとの抽選)</div>
       <div class="big">${fmtPercent(r.p)}%</div>
@@ -316,6 +324,7 @@ function render() {
         <div>イベント時間<b>${fmtDuration(trials * ts)}</b></div>
         <div>抽選回数/人<b>${trials.toLocaleString("ja-JP")}回</b></div>
         <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
+        <div>在庫が尽きる確率<b>${fmtChance(soldOut)}</b></div>
       </div>`;
   } else {
     const p = (+$("inPercent").value || 0) / 100;
@@ -326,6 +335,7 @@ function render() {
       return;
     }
     const sec = r.trials * ts;
+    const soldOut = tailProb(users, r.trials, p, limit, Math.ceil(maxDrop));
     box.innerHTML = `
       <div class="label">目標到達までの推定時間</div>
       <div class="big">${fmtDuration(sec)}</div>
@@ -335,6 +345,7 @@ function render() {
         <div>当選確率<b>${fmtPercent(p)}%</b></div>
         <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
         <div>理論上限<b>${Math.min(maxDrop, users * limit).toLocaleString("ja-JP")}個</b></div>
+        <div>在庫が尽きる確率<b>${fmtChance(soldOut)}</b></div>
       </div>`;
   }
 }
