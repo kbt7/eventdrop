@@ -79,6 +79,7 @@
     margin: 6px 0 2px; word-break: break-all;
   }
   .result .odds { font-size: 14px; color: var(--muted); }
+  .result .note { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
   .result .error { color: var(--warn); font-size: 15px; font-weight: 600; }
   .result .detail {
     display: flex; justify-content: center; gap: 24px;
@@ -295,9 +296,10 @@ function render() {
     }
     const odds = Math.round(1 / r.p);
     box.innerHTML = `
-      <div class="label">必要な当選確率(99%の確率で目標達成・${ts}秒ごとの抽選)</div>
+      <div class="label">必要な当選確率(${ts}秒ごとの抽選)</div>
       <div class="big">${fmtPercent(r.p)}%</div>
       <div class="odds">約 1 / ${odds.toLocaleString("ja-JP")}</div>
+      <div class="note">この確率に設定すれば、期間内に目標へ届かないのは100回に1回未満</div>
       <div class="detail">
         <div>イベント時間<b>${fmtDuration(trials * ts)}</b></div>
         <div>抽選回数/人<b>${trials.toLocaleString("ja-JP")}回</b></div>
@@ -313,9 +315,10 @@ function render() {
     }
     const sec = r.trials * ts;
     box.innerHTML = `
-      <div class="label">目標到達までの推定時間(99%の確率で達成)</div>
+      <div class="label">目標到達までの推定時間</div>
       <div class="big">${fmtDuration(sec)}</div>
       <div class="odds">抽選 ${r.trials.toLocaleString("ja-JP")}回/人(${ts}秒ごと)</div>
+      <div class="note">この時間を確保すれば、目標に届かないのは100回に1回未満</div>
       <div class="detail">
         <div>当選確率<b>${fmtPercent(p)}%</b></div>
         <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
