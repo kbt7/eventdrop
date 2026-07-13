@@ -154,7 +154,6 @@
 const trialSec = () => ($("inSakuTicket").checked ? 20 : 40);
 const maxTrials = (ts) => Math.floor(100 * 365 * 24 * 3600 / ts); // 100年分
 
-const CONF = 0.99;        // 保証率: 99%の確率で目標達成
 const EXACT_OPS = 3e5;    // これ以下の演算量なら厳密計算、超えたら正規近似
 
 // 相補誤差関数 (Abramowitz–Stegun 7.1.26)
@@ -213,38 +212,77 @@ function tailProb(users, n, p, L, target) {
   return 0.5 * erfc((target - 0.5 - mu) / sigma / Math.SQRT2);
 }
 
-// 99%の確率で目標に届く当選確率 (0〜1) を二分法で求める
-function findPercent(users, trials, L, target) {
-  if (trials <= 0) return { error: "イベントの長さを入れてください" };
-  const T = Math.ceil(target);
-  const maxTotal = users * Math.min(L, trials);
-  if (T > maxTotal) {
-    return { error: `目標が理論上限 (${maxTotal.toLocaleString("ja-JP")}個) を超えています` };
+// 配布数の期待値 E[min(在庫M, 全員の合計)]: 小規模は厳密畳み込み、大規模は正規近似
+function expectedDelivered(users, n, p, L, M) {
+  if (p <= 0 || n <= 0) return 0;
+  if (p >= 1) return Math.min(M, users * Math.min(L, n));
+  const pmf = userPmf(n, p, L);
+
+  if (users * (M + 1) * (L + 1) <= EXACT_OPS) {
+    let dist = new Float64Array(M + 1);
+    dist[0] = 1;
+    for (let u = 0; u < users; u++) {
+      const nd = new Float64Array(M + 1);
+      for (let s = 0; s <= M; s++) {
+        const ds = dist[s];
+        if (ds === 0) continue;
+        if (s === M) { nd[M] += ds; continue; }
+        for (let k = 0; k <= L; k++) nd[Math.min(M, s + k)] += ds * pmf[k];
+      }
+      dist = nd;
+    }
+    let E = 0;
+    for (let s = 1; s <= M; s++) E += s * dist[s];
+    return E;
   }
+
+  let mean = 0, m2 = 0;
+  for (let k = 0; k <= L; k++) { mean += k * pmf[k]; m2 += k * k * pmf[k]; }
+  const varY = Math.max(0, m2 - mean * mean);
+  const mu = users * mean, sigma = Math.sqrt(users * varY);
+  if (sigma === 0) return Math.min(M, mu);
+  // 正規近似: E[min(M, N(μ,σ))] = μΦ(a) − σφ(a) + M(1−Φ(a)), a=(M−μ)/σ
+  const a = (M - mu) / sigma;
+  const phi = Math.exp(-a * a / 2) / Math.sqrt(2 * Math.PI);
+  const Phi = 1 - 0.5 * erfc(a / Math.SQRT2);
+  return mu * Phi - sigma * phi + M * (1 - Phi);
+}
+
+// 平均配布数が目標に届く当選確率 (0〜1) を二分法で求める
+function findPercent(users, trials, L, target, M) {
+  if (trials <= 0) return { error: "イベントの長さを入れてください" };
+  const maxE = Math.min(M, users * Math.min(L, trials));
+  if (target > maxE) {
+    return { error: `目標が理論上限 (${maxE.toLocaleString("ja-JP")}個) を超えています` };
+  }
+  if (target === maxE) return { p: 1 };  // 平均で上限ちょうど = 毎回必ず当てるしかない
   let lo = 0, hi = 1;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
-    if (tailProb(users, trials, mid, L, T) < CONF) lo = mid; else hi = mid;
+    if (expectedDelivered(users, trials, mid, L, M) < target) lo = mid; else hi = mid;
   }
   return { p: hi };
 }
 
-// 99%の確率で目標に届く最小の抽選回数を求める
-function findTrials(users, p, L, target, ts) {
+// 平均配布数が目標に届く最小の抽選回数を求める
+function findTrials(users, p, L, target, ts, M) {
   const MAX_TRIALS = maxTrials(ts);
-  const T = Math.ceil(target);
   if (p <= 0) return { error: "確率を入れてください" };
-  if (T > users * L) {
-    return { error: `目標が理論上限 (${(users * L).toLocaleString("ja-JP")}個) を超えています` };
+  const maxLim = Math.min(M, users * L);
+  if (target > maxLim) {
+    return { error: `目標が理論上限 (${maxLim.toLocaleString("ja-JP")}個) を超えています` };
   }
-  if (tailProb(users, MAX_TRIALS, p, L, T) < CONF) {
+  if (target === maxLim) {
+    return { error: "平均で上限ちょうどを狙えるのは確率100%のときだけです(目標を下げるか、最大ドロップ数・1人上限を増やしてください)" };
+  }
+  if (expectedDelivered(users, MAX_TRIALS, p, L, M) < target) {
     return { error: "その確率では100年以内に目標へ届きません(確率を上げてください)" };
   }
   let lo = 0, hi = 180;
-  while (tailProb(users, hi, p, L, T) < CONF) { lo = hi; hi = Math.min(hi * 2, MAX_TRIALS); }
+  while (expectedDelivered(users, hi, p, L, M) < target) { lo = hi; hi = Math.min(hi * 2, MAX_TRIALS); }
   while (hi - lo > 1) {
     const mid = Math.floor((lo + hi) / 2);
-    if (tailProb(users, mid, p, L, T) < CONF) lo = mid; else hi = mid;
+    if (expectedDelivered(users, mid, p, L, M) < target) lo = mid; else hi = mid;
   }
   return { trials: hi };
 }
@@ -307,7 +345,7 @@ function render() {
   if (mode === "percent") {
     const sec = (+$("inH").value || 0) * 3600 + (+$("inM").value || 0) * 60 + (+$("inS").value || 0);
     const trials = Math.round(sec / ts);
-    const r = findPercent(users, trials, limit, target);
+    const r = findPercent(users, trials, limit, target, maxDrop);
 
     if (r.error) {
       box.innerHTML = `<div class="error">⚠️ ${r.error}</div>`;
@@ -319,7 +357,7 @@ function render() {
       <div class="label">必要な当選確率(${ts}秒ごとの抽選)</div>
       <div class="big">${fmtPercent(r.p)}%</div>
       <div class="odds">約 1 / ${odds.toLocaleString("ja-JP")}</div>
-      <div class="note">この確率に設定すれば、期間内に目標へ届かないのは100回に1回未満</div>
+      <div class="note">この確率にすると、期間内の配布数が平均で目標に届きます(回ごとのブレあり)</div>
       <div class="detail">
         <div>イベント時間<b>${fmtDuration(trials * ts)}</b></div>
         <div>抽選回数/人<b>${trials.toLocaleString("ja-JP")}回</b></div>
@@ -328,7 +366,7 @@ function render() {
       </div>`;
   } else {
     const p = (+$("inPercent").value || 0) / 100;
-    const r = findTrials(users, p, limit, target, ts);
+    const r = findTrials(users, p, limit, target, ts, maxDrop);
 
     if (r.error) {
       box.innerHTML = `<div class="error">⚠️ ${r.error}</div>`;
@@ -340,7 +378,7 @@ function render() {
       <div class="label">目標到達までの推定時間</div>
       <div class="big">${fmtDuration(sec)}</div>
       <div class="odds">抽選 ${r.trials.toLocaleString("ja-JP")}回/人(${ts}秒ごと)</div>
-      <div class="note">この時間を確保すれば、目標に届かないのは100回に1回未満</div>
+      <div class="note">この時間で、配布数が平均で目標に届きます(回ごとのブレあり)</div>
       <div class="detail">
         <div>当選確率<b>${fmtPercent(p)}%</b></div>
         <div>1人平均<b>${(target / users).toFixed(2)}個</b></div>
